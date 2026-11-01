@@ -19,6 +19,11 @@ import software.amazon.awssdk.services.dynamodb.model.*
 class CucumberTestcontainersConfig {
 
     companion object {
+        init {
+            System.setProperty("api.version", "1.44")
+            System.setProperty("DOCKER_API_VERSION", "1.44")
+        }
+
         private const val TABLE_NAME = "tb-service_order-test"
 
         val localstack: LocalStackContainer = LocalStackContainer(DockerImageName.parse("localstack/localstack:3.4.0"))
@@ -31,11 +36,12 @@ class CucumberTestcontainersConfig {
         @JvmStatic
         @DynamicPropertySource
         fun overrideProperties(registry: DynamicPropertyRegistry) {
-            val endpoint = localstack.getEndpointOverride(LocalStackContainer.Service.DYNAMODB).toString()
-            registry.add("aws.endpoint-url") { endpoint }
+            System.setProperty("aws.accessKeyId", localstack.accessKey)
+            System.setProperty("aws.secretAccessKey", localstack.secretKey)
+            System.clearProperty("aws.sessionToken")
+
+            registry.add("aws.endpoint-url") { localstack.endpoint.toString() }
             registry.add("aws.region") { localstack.region }
-            registry.add("aws.access-key-id") { localstack.accessKey }
-            registry.add("aws.secret-access-key") { localstack.secretKey }
             registry.add("dynamodb.table.service-order") { TABLE_NAME }
         }
 
@@ -79,4 +85,3 @@ class CucumberTestcontainersConfig {
         }
     }
 }
-
