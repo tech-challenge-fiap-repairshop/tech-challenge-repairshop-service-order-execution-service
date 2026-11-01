@@ -3,6 +3,7 @@ package com.cao.repairshop.bdd.steps
 import com.cao.repairshop.core.exception.InvalidStateTransitionException
 import com.cao.repairshop.execution.domain.ExecutionStatus
 import com.cao.repairshop.execution.domain.entities.Insume
+import com.cao.repairshop.serviceorder.application.gateways.ServiceOrderGateway
 import com.cao.repairshop.serviceorder.domain.ServiceOrderStatus
 import com.cao.repairshop.serviceorder.domain.entities.ServiceOrder
 import io.cucumber.java.pt.Dado
@@ -11,11 +12,15 @@ import io.cucumber.java.pt.Entao
 import io.cucumber.java.pt.Quando
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.springframework.beans.factory.annotation.Autowired
 import java.math.BigDecimal
 import java.time.LocalDateTime
 import java.util.UUID
 
 class ServiceOrderStepDefinitions {
+
+    @Autowired
+    private lateinit var serviceOrderGateway: ServiceOrderGateway
 
     private lateinit var serviceOrder: ServiceOrder
     private var lastException: Exception? = null
@@ -28,6 +33,8 @@ class ServiceOrderStepDefinitions {
             status = ServiceOrderStatus.valueOf(statusInicial),
             enterTime = LocalDateTime.now()
         )
+        // Persiste no DynamoDB do Testcontainers
+        serviceOrderGateway.save(serviceOrder)
         lastException = null
     }
 
@@ -40,6 +47,7 @@ class ServiceOrderStepDefinitions {
             estimatedTime = null,
             insumes = emptyList()
         )
+        serviceOrderGateway.save(serviceOrder)
     }
 
     @E("adiciona o insumo {string} com valor unitário de {double} e quantidade {int}")
@@ -53,37 +61,45 @@ class ServiceOrderStepDefinitions {
         val exec = serviceOrder.executions.last()
         exec.addInsume(insume, quantidade)
         serviceOrder.recalculateTotalPrice()
+        serviceOrderGateway.save(serviceOrder)
     }
 
     @Entao("o valor total da Ordem de Serviço deve ser {double}")
     fun oValorTotalDaOrdemDeServicoDeveSer(valorEsperado: Double) {
-        assertThat(serviceOrder.totalPrice).isEqualByComparingTo(BigDecimal.valueOf(valorEsperado))
+        val persisted = serviceOrderGateway.findDetailedById(serviceOrder.id)
+        assertThat(persisted).isNotNull
+        assertThat(persisted!!.totalPrice).isEqualByComparingTo(BigDecimal.valueOf(valorEsperado))
     }
 
     @Quando("a Ordem de Serviço avança para o status {string}")
     fun aOrdemDeServicoAvancaParaOStatus(novoStatus: String) {
         serviceOrder.advanceStatus(ServiceOrderStatus.valueOf(novoStatus))
+        serviceOrderGateway.save(serviceOrder)
     }
 
     @E("o cliente aprova o orçamento")
     fun oClienteAprovaOOrcamento() {
         serviceOrder.approve()
+        serviceOrderGateway.save(serviceOrder)
     }
 
     @Entao("o status da Ordem de Serviço deve ser {string}")
     fun oStatusDaOrdemDeServicoDeveSer(statusEsperado: String) {
-        assertThat(serviceOrder.status).isEqualTo(ServiceOrderStatus.valueOf(statusEsperado))
+        val persisted = serviceOrderGateway.findDetailedById(serviceOrder.id)
+        assertThat(persisted).isNotNull
+        assertThat(persisted!!.status).isEqualTo(ServiceOrderStatus.valueOf(statusEsperado))
     }
 
     @E("o histórico deve conter o registro de transição para {string}")
     fun oHistoricoDeveConterORegistroDeTransicao(statusEsperado: String) {
-        val status = ServiceOrderStatus.valueOf(statusEsperado)
-        assertThat(serviceOrder.histories.any { it.status == status }).isTrue()
+        val fullOrder = serviceOrderGateway.getFullOrder(serviceOrder.id)
+        assertThat(fullOrder.histories.any { it.status == statusEsperado }).isTrue()
     }
 
     @Quando("o cliente recusa o orçamento")
     fun oClienteRecusaOOrcamento() {
         serviceOrder.refuse()
+        serviceOrderGateway.save(serviceOrder)
     }
 
     @E("a Ordem de Serviço não deve permitir avançar para {string}")
@@ -102,6 +118,7 @@ class ServiceOrderStepDefinitions {
     fun oAtendenteTentaAvancarAOrdemDeServicoPara(novoStatus: String) {
         try {
             serviceOrder.advanceStatus(ServiceOrderStatus.valueOf(novoStatus))
+            serviceOrderGateway.save(serviceOrder)
         } catch (ex: Exception) {
             lastException = ex
         }
@@ -118,21 +135,26 @@ class ServiceOrderStepDefinitions {
     @E("o pagamento é confirmado e a Ordem de Serviço avança para {string}")
     fun oPagamentoEConfirmadoEOrdemAvancaPara(novoStatus: String) {
         serviceOrder.advanceStatus(ServiceOrderStatus.valueOf(novoStatus))
+        serviceOrderGateway.save(serviceOrder)
     }
 
     @E("o mecânico finaliza todas as tarefas do serviço")
     fun oMecanicoFinalizaTodasAsTarefasDoServico() {
         serviceOrder.executions.forEach { it.status = ExecutionStatus.FINALIZED }
+        serviceOrderGateway.save(serviceOrder)
     }
 
     @Quando("a Ordem de Serviço é verificada para conclusão")
     fun aOrdemDeServicoEVerificadaParaConclusao() {
         val completed = serviceOrder.checkCompletion()
         assertThat(completed).isTrue()
+        serviceOrderGateway.save(serviceOrder)
     }
 
     @E("a data de finalização deve ser registrada")
     fun aDataDeFinalizacaoDeveSerRegistrada() {
-        assertThat(serviceOrder.endTime).isNotNull()
+        val persisted = serviceOrderGateway.findDetailedById(serviceOrder.id)
+        assertThat(persisted).isNotNull
+        assertThat(persisted!!.endTime).isNotNull()
     }
 }

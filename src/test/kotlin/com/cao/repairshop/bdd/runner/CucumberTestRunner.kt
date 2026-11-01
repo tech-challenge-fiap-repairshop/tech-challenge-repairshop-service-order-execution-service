@@ -11,7 +11,6 @@ import io.cucumber.junit.platform.engine.Constants.PLUGIN_PROPERTY_NAME
 @Suite
 @IncludeEngines("cucumber")
 @SelectClasspathResource("features")
-@ConfigurationParameter(key = GLUE_PROPERTY_NAME, value = "com.cao.repairshop.bdd.steps")
+@ConfigurationParameter(key = GLUE_PROPERTY_NAME, value = "com.cao.repairshop.bdd")
 @ConfigurationParameter(key = PLUGIN_PROPERTY_NAME, value = "pretty, summary")
 class CucumberTestRunner
-
